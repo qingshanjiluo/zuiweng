@@ -20,7 +20,7 @@ jobs:
         with:
           python-version: '3.10'
       - run: pip install requests
-      - run: python scripts/chunshui_register.py
+      - run: python scripts/register_driver.py
         env:
           ZUIWENG_API: ${{ secrets.ZUIWENG_API }}
           ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}

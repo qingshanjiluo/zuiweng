@@ -1,0 +1,11 @@
+{
+  "aimagnet": {
+    "label": "春水酒馆",
+    "module": "platforms.aimagnet",
+    "class": "Platform",
+    "register": true,
+    "daily": true,
+    "register_interval": 25,
+    "enabled": true
+  }
+}
