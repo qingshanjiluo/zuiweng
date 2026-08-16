@@ -16,5 +16,14 @@
     "daily": true,
     "register_interval": 30,
     "enabled": true
+  },
+  "dzmm": {
+    "label": "DZMM",
+    "module": "platforms.dzmm",
+    "class": "Platform",
+    "register": false,
+    "daily": true,
+    "register_interval": 30,
+    "enabled": true
   }
 }

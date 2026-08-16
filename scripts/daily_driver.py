@@ -28,10 +28,24 @@ def main():
     if not dailies:
         print("无启用的每日平台 (platforms.json)"); sys.exit(1)
 
-    r = http("GET", f"{API}/api/admin/chunshui/accounts", token=ADMIN)
+    r = http("GET", f"{API}/api/admin/chunshui/accounts?limit=5000", token=ADMIN)
     if r.status_code != 200:
         print("拉号池失败", r.status_code, r.text[:200]); sys.exit(1)
     accs = r.json()["data"]["accounts"]
+    if len(accs) >= 4990:   # 号池超 5000 时按分页补拉
+        seen = {a["id"] for a in accs}
+        off = 5000
+        while True:
+            r2 = http("GET", f"{API}/api/admin/chunshui/accounts?limit=5000&offset={off}", token=ADMIN)
+            page = r2.json()["data"]["accounts"]
+            if not page:
+                break
+            for a in page:
+                if a["id"] not in seen:
+                    accs.append(a); seen.add(a["id"])
+            if len(page) < 5000:
+                break
+            off += 5000
     print(f"号池 {len(accs)} 个账号, 日期 {TODAY}, 平台: {', '.join(dailies)}")
 
     groups = {}
