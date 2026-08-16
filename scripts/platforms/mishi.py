@@ -103,6 +103,7 @@ class Platform(PlatformBase):
                     "phone": "", "headerImg": "", "enable": 1,
                     "inviteCode": INVITE, "deviceFingerprint": fp,
                     "captcha": code, "captchaId": capid}
+            time.sleep(random.uniform(1, 2))
             try:
                 r = s.post(ORIG + "/api/gva/user/register_and_login", json=body,
                            headers={**_headers(), "x-device-fingerprint": fp}, timeout=30)
@@ -110,7 +111,24 @@ class Platform(PlatformBase):
             except Exception as e:
                 last_msg = f"网络异常:{str(e)[:60]}"
                 break
-            if (j.get("code") or 0) != 0:
+            # code=None/missing 表示空响应(被限流), code!=0 为业务错误
+            code = j.get("code")
+            if code is None:
+                # 空响应=被限流, 等待后重试当前用户名
+                log(f"  空响应, 等15s后重试")
+                time.sleep(15)
+                try:
+                    r = s.post(ORIG + "/api/gva/user/register_and_login", json=body,
+                               headers={**_headers(), "x-device-fingerprint": fp}, timeout=30)
+                    j = r.json()
+                    code = j.get("code")
+                except Exception as e:
+                    last_msg = f"重试网络异常:{str(e)[:60]}"
+                    break
+                if code is None:
+                    last_msg = "空响应(被限流)"
+                    break
+            if code != 0:
                 last_msg = f"{j.get('msg')}"
                 if is_dup_error(last_msg):
                     log(f"  重名({last_msg[:30]}), 换名重试")
@@ -121,6 +139,7 @@ class Platform(PlatformBase):
             uid = user.get("ID") or user.get("id")
             if not uid or not d.get("token"):
                 last_msg = "注册返回缺少uid/token"
+                log(f"  DEBUG resp: code={code} data_keys={list(d.keys())} user_keys={list(user.keys())}")
                 break
             petals = 0
             try:
@@ -160,8 +179,9 @@ class Platform(PlatformBase):
                     time.sleep(random.uniform(0.5, 1.5))
                     j = s.post(ORIG + "/api/gva/base/login",
                                json={"username": uname, "password": pwd}, timeout=30).json()
-                    if (j.get("code") or 0) != 0:
-                        err = f"login失败:{j.get('msg')}"
+                    code = j.get("code")
+                    if code is None or code != 0:
+                        err = f"login失败:{j.get('msg') or '空响应'}"
                     else:
                         tok = j["data"]["token"]
                         pts, sstat, reward = self._do_sign(s, tok)
@@ -220,8 +240,9 @@ class Platform(PlatformBase):
             return self._points(s, tok), "ALREADY", 0
         r = s.post(ORIG + "/api/gva/checkin/sign", headers=AH, json={}, timeout=25)
         j = r.json()
-        if (j.get("code") or 0) != 0:
+        code = j.get("code")
+        if code is None or code != 0:
             if "今日已签到" in str(j.get("msg")):
                 return self._points(s, tok), "ALREADY", 0
-            return self._points(s, tok), f"ERR:{j.get('msg')}", None
+            return self._points(s, tok), f"ERR:{j.get('msg') or '空响应'}", None
         return self._points(s, tok), "SIGNED", int(d.get("todayReward") or 0)
