@@ -19,11 +19,17 @@ def http(method, url, json=None, token=None):
     return r
 
 def aim_login(email, pwd):
-    r = http("POST", "https://aimagnet.vip/v1/auth/login", {"identifier": email, "password": pwd})
-    if r.status_code != 200:
-        return None, f"login:{r.status_code}"
-    j = r.json()
-    return j, None
+    import time as _t
+    for i in range(4):
+        r = http("POST", "https://aimagnet.vip/v1/auth/login", {"identifier": email, "password": pwd})
+        if r.status_code == 429:
+            _t.sleep(15 * (i + 1))
+            continue
+        if r.status_code != 200:
+            return None, f"login:{r.status_code}"
+        j = r.json()
+        return j, None
+    return None, "login:429(重试耗尽)"
 
 def aim_do(email, pwd, user_id):
     """返回 (petals, sign_status, sign_reward, err)"""
@@ -84,7 +90,7 @@ def main():
         if petals is not None:
             points.append({"account_id": a["id"], "date": TODAY, "petals": int(petals)})
         health.append({"account_id": a["id"], "ok": ok_flag, "error": err or "", "petals": petals if petals is not None else a["petals"]})
-        time.sleep(1)
+        time.sleep(3)
 
     body = {"accounts": accounts_out, "sign_records": signs, "points": points, "health": health}
     r = http("POST", f"{API}/api/chunshui/sync", body, token=ADMIN)
