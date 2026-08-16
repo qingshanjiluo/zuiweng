@@ -2,32 +2,33 @@
 # -*- coding: utf-8 -*-
 """密丝AI (missai.me / www.miss001.org) 适配器
 注册与每日签到均为纯 API, 可全自动:
-  注册:
+  注册 (requests 直连即可, 无需 curl_cffi/代理):
     POST /api/gva/base/captcha                      -> {captchaId, picPath(6位数字图)}
     ddddocr 识别数字验证码 (页面提供"改用数字验证码"切换, 即此接口)
-    POST /api/gva/user/register_and_login {userName, passWord, inviteCode:"AB67E50C",
+    POST /api/gva/user/register_and_login {userName, passWord, inviteCode(可空),
            deviceFingerprint, captcha, captchaId}  + header X-Device-Fingerprint
-           -> {user{ID,uuid}, token} (邀请码奖励 1000 永久积分)
+           -> {user{ID,uuid}, token}
   每日签到:
     POST /api/gva/base/login {username, password}   -> {token}
     GET  /api/gva/checkin/status                    -> {hasCheckedIn, todayReward}
     POST /api/gva/checkin/sign                      -> 签到, 得体验点
     GET  /api/gva/pointsAcc/getUserPointsAccount    -> 总积分 = combinedBalance
   鉴权头: x-token  (非 Authorization)
+  邀请码: env MISSAI_INVITE, 为空则不带 (AB67E50C 曾可用, 现已失效)
   邮箱认证: /api/gva/email/sendVerificationCode + /api/gva/email/verifyAndBind
-            (mail.tm 可收码, 认证奖励发放机制待确认)
+            (mail.tm 可收码, 奖励发放机制待确认)
 """
 import os, re, time, base64, random, string
 from .base import PlatformBase, all_accounts_fields
 
 try:
-    from curl_cffi import requests as cr
+    import requests
 except Exception:
-    cr = None
+    requests = None
 
 BASE = "https://missai.me"
 ORIG = "https://www.miss001.org"
-INVITE = "AB67E50C"
+INVITE = os.environ.get("MISSAI_INVITE", "")
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "Chrome/150.0.0.0 Safari/537.36")
 _ocr = None
@@ -47,14 +48,14 @@ def _headers():
         "accept": "application/json, text/plain, */*",
         "content-type": "application/json",
         "origin": ORIG,
-        "referer": ORIG + "/register?inviteCode=" + INVITE,
+        "referer": ORIG + "/register?inviteCode=" + (INVITE or "none"),
     }
 
 
-def _session(proxies=None):
-    if cr is None:
+def _session():
+    if requests is None:
         return None
-    s = cr.Session(impersonate="chrome124", proxies=proxies or {})
+    s = requests.Session()
     s.headers.update(_headers())
     return s
 
@@ -77,13 +78,14 @@ class Platform(PlatformBase):
 
     # ---------- 注册 ----------
     def register(self, log):
-        proxies = {"http": "http://127.0.0.1:7890", "https": "http://127.0.0.1:7890"} \
-            if os.environ.get("LOCAL_PROXY") else {}
-        s = _session(proxies)
+        s = _session()
         if not s:
-            log("  无 curl_cffi")
+            log("  no-requests")
             return None
-        s.get(ORIG + "/", timeout=30)
+        try:
+            s.get(ORIG + "/", timeout=30)
+        except Exception:
+            pass
         time.sleep(random.uniform(0.5, 1.5))
         capid, code = self._captcha(s)
         if not capid:
@@ -92,8 +94,9 @@ class Platform(PlatformBase):
         uname, pwd = _rand_user(), _rand_pwd()
         fp = _rand_fp()
         body = {"userName": uname, "passWord": pwd, "nickName": uname, "email": "",
-                "phone": "", "headerImg": "", "enable": 1, "inviteCode": INVITE,
-                "deviceFingerprint": fp, "captcha": code, "captchaId": capid}
+                "phone": "", "headerImg": "", "enable": 1,
+                "inviteCode": INVITE, "deviceFingerprint": fp,
+                "captcha": code, "captchaId": capid}
         r = s.post(ORIG + "/api/gva/user/register_and_login", json=body,
                    headers={**_headers(), "x-device-fingerprint": fp}, timeout=30)
         try:
@@ -129,18 +132,19 @@ class Platform(PlatformBase):
         accounts_out, signs, points, health = [], [], [], []
         ok = 0
         today = time.strftime("%Y-%m-%d")
-        proxies = {"http": "http://127.0.0.1:7890", "https": "http://127.0.0.1:7890"} \
-            if os.environ.get("LOCAL_PROXY") else {}
         for a in accounts:
             uname, pwd = a.get("email"), a.get("password")
             err = None
             pts = sstat = reward = None
             try:
-                s = _session(proxies)
+                s = _session()
                 if not s:
-                    err = "no-curl_cffi"
+                    err = "no-requests"
                 else:
-                    s.get(ORIG + "/", timeout=30)
+                    try:
+                        s.get(ORIG + "/", timeout=30)
+                    except Exception:
+                        pass
                     time.sleep(random.uniform(0.5, 1.5))
                     j = s.post(ORIG + "/api/gva/base/login",
                                json={"username": uname, "password": pwd}, timeout=30).json()
