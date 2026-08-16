@@ -84,7 +84,10 @@ def main():
         else:
             ok += 1
             print(f"[{a['id']}] {a['nickname']} sign={sstat} reward={reward} petals={petals}")
-        accounts_out.append({"id": a["id"], "email": a["email"], "petals": petals if petals is not None else a["petals"], "status": a["status"]})
+        accounts_out.append({"id": a["id"], "email": a["email"], "nickname": a["nickname"], "password": a["password"],
+                             "email_password": a.get("email_password") or "", "user_id": a.get("user_id") or "",
+                             "registered_at": a.get("registered_at") or "", "petals": petals if petals is not None else a["petals"],
+                             "status": a["status"]})
         if sstat in ("SIGNED", "ALREADY"):
             signs.append({"account_id": a["id"], "date": TODAY, "status": sstat, "reward": reward or 0})
         if petals is not None:
