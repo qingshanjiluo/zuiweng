@@ -1,11 +1,11 @@
-name: chunshui-register
+name: aimagnet-register
 on:
   schedule:
-    - cron: '7 */2 * * *'     # 每 2 小时 07 分 (UTC)
+    - cron: '7 */2 * * *'
   workflow_dispatch:
     inputs:
       count:
-        description: '本轮注册总量(所有平台合计)'
+        description: '本轮注册量'
         required: false
         default: '200'
       shards:
@@ -33,3 +33,4 @@ jobs:
           COUNT: ${{ github.event.inputs.count || '200' }}
           SHARDS: ${{ github.event.inputs.shards || '4' }}
           SHARD: ${{ matrix.shard }}
+          PLATFORM: aimagnet

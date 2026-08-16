@@ -11,6 +11,7 @@ from platforms import load_config, build_platforms
 
 API = os.environ.get("ZUIWENG_API", "https://zuiweng-api.sifangzhiji.workers.dev")
 ADMIN = os.environ.get("ADMIN_TOKEN", "")
+PLATFORM = os.environ.get("PLATFORM", "")       # 指定平台, 空=全部
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/150.0.0.0 Safari/537.36")
 TODAY = datetime.datetime.utcnow().strftime("%Y-%m-%d")
 
@@ -25,6 +26,8 @@ def main():
         print("缺少 ADMIN_TOKEN"); sys.exit(1)
     plats = build_platforms(load_config())
     dailies = {n: p for n, p in plats.items() if getattr(p, "daily_enabled", False)}
+    if PLATFORM:
+        dailies = {n: p for n, p in dailies.items() if n == PLATFORM}
     if not dailies:
         print("无启用的每日平台 (platforms.json)"); sys.exit(1)
 

@@ -11,6 +11,17 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
 AB = "https://aimagnet.vip"
 
 
+def total_petals(bal):
+    """电子魅魔总积分 = 永久花瓣(petals) + 限时积分(bonusPetals)"""
+    try:
+        return int(bal.get("petals") or 0) + int(bal.get("bonusPetals") or 0)
+    except Exception:
+        try:
+            return int(bal.get("petals") or 0)
+        except Exception:
+            return 0
+
+
 class Platform(PlatformBase):
     name = "aimagnet"
     label = "春水酒馆"
@@ -41,7 +52,7 @@ class Platform(PlatformBase):
             return None
         petals = 0
         try:
-            petals = int(am.balance(user["id"], token).get("petals") or 0)
+            petals = total_petals(am.balance(user["id"], token))
         except Exception:
             pass
         acc = {
@@ -120,7 +131,7 @@ class Platform(PlatformBase):
                 sstat = f"ERR:{r.status_code}"
         petals = None
         try:
-            petals = requests.get(f"{AB}/v1/users/{uid}/balance", headers={**h, "authorization": f"Bearer {tok}"}, timeout=25).json().get("petals")
+            petals = total_petals(requests.get(f"{AB}/v1/users/{uid}/balance", headers={**h, "authorization": f"Bearer {tok}"}, timeout=25).json())
         except Exception:
             pass
         return petals, sstat, reward, None

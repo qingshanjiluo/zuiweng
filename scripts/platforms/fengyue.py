@@ -111,7 +111,6 @@ class Platform(PlatformBase):
                     reward, sstat = None, "ALREADY" if signed else "SKIP"
                     if not signed:
                         reward, sstat = self._sign(jwt)
-                    self._lottery(jwt, log)   # 抽奖受白名单邮箱门槛限制, 失败不影响探活
             except Exception as e:
                 err = f"exc:{str(e)[:60]}"
                 pts, sstat, reward = None, "ERR", None
@@ -193,16 +192,5 @@ class Platform(PlatformBase):
         return None, "ERR:all-domains"
 
     def _lottery(self, jwt, log):
-        """抽奖受 '绑定白名单邮箱' 门槛限制 (guest_limit), 失败视为正常"""
-        for base in LOGIN_DOMAINS:
-            try:
-                r = requests.post(f"{base}/console/api/daily_lottery/draw", json={},
-                                  headers=api_headers(jwt), timeout=25)
-                j = r.json()
-                if j.get("code") == 200:
-                    log("    抽奖成功: " + str(j.get("data"))[:60])
-                elif j.get("code") == "guest_limit":
-                    log("    抽奖: 需绑定白名单邮箱 (已知门槛)")
-                return
-            except Exception:
-                continue
+        """抽奖受 '绑定白名单邮箱' 门槛限制 (guest_limit), 已按需求停用(只签到不抽奖)"""
+        return

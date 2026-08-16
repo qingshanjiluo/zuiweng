@@ -14,6 +14,7 @@ ADMIN = os.environ.get("ADMIN_TOKEN", "")
 COUNT = int(os.environ.get("COUNT", "5"))
 SHARDS = int(os.environ.get("SHARDS", "1"))     # 并行 job 总数
 SHARD = int(os.environ.get("SHARD", "0"))       # 当前 job 序号
+PLATFORM = os.environ.get("PLATFORM", "")       # 指定平台, 空=全部
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/150.0.0.0 Safari/537.36")
 
 def http(method, url, json=None, token=None):
@@ -28,6 +29,8 @@ def main():
     config = load_config()
     plats = build_platforms(config)
     regs = {n: p for n, p in plats.items() if getattr(p, "register_enabled", False)}
+    if PLATFORM:
+        regs = {n: p for n, p in regs.items() if n == PLATFORM}
     if not regs:
         print("无启用的注册平台 (platforms.json)"); sys.exit(1)
     per = max(1, (COUNT + SHARDS - 1) // SHARDS)
