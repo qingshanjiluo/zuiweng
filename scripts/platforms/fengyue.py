@@ -84,7 +84,8 @@ class Platform(PlatformBase):
             pts = self._points(jwt)
             return {
                 "platform": self.name,
-                "nickname": name, "password": pwd, "email": "", "email_password": "",
+                "nickname": name, "password": pwd,
+                "email": f"{name}@fengyue.local", "email_password": "",
                 "user_id": jwt, "registered_at": "",
                 "petals": pts, "status": "pool",
             }
