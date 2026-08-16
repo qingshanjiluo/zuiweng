@@ -122,7 +122,9 @@ async function api(method, path, body) {
   if (!res.ok) throw new Error(j.message || ('HTTP ' + res.status));
   return j.data;
 }
-const PLATFORM_LABELS = { aimagnet: '春水酒馆' };
+const PLATFORM_LABELS = { aimagnet: '春水酒馆', fengyue: '风月酒馆' };
+const PLATFORM_UNITS = { aimagnet: '花瓣', fengyue: '积分' };
+const CONV_RATE = 1000;   // 花瓣/积分 -> 代币 汇率
 const fmt = (n) => (Number(n) || 0).toLocaleString('zh-CN');
 const fmtTime = (u) => {
   if (!u) return '—';
@@ -642,7 +644,8 @@ const PoolAdminPage = () => {
 
   const load = async () => {
     try {
-      const s = await api('GET', '/api/admin/chunshui/stats');
+      const sp = platform ? '?platform=' + encodeURIComponent(platform) : '';
+      const s = await api('GET', '/api/admin/chunshui/stats' + sp);
       setStats(s);
       const params = new URLSearchParams();
       if (status) params.set('status', status);
@@ -659,7 +662,7 @@ const PoolAdminPage = () => {
 
   useEffect(() => { load(); }, [status, q, platform]);
 
-  const platOptions = Array.from(new Set(accounts.map(a => a.platform || 'aimagnet')));
+  const platTabs = Array.from(new Set(['', ...Object.keys(PLATFORM_LABELS), ...accounts.map(a => a.platform || '')])).filter(Boolean);
 
   const patch = async (id, body) => {
     try { await api('PATCH', `/api/admin/chunshui/accounts/${id}`, body); setMsg('已更新'); load(); } catch (e) { setMsg(e.message); }
@@ -704,11 +707,13 @@ const PoolAdminPage = () => {
       )}
 
       <div className="flex flex-col md:flex-row gap-4 mb-6">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button onClick={() => setPlatform('')} className={`px-4 py-2 font-serif text-sm tracking-widest border transition-colors ${!platform ? 'bg-amber text-white border-amber' : 'border-tea-border text-ink-light hover:border-amber hover:text-amber'}`}>全部平台</button>
+          {platTabs.map(x => (
+            <button key={x} onClick={() => setPlatform(x)} className={`px-4 py-2 font-serif text-sm tracking-widest border transition-colors ${platform === x ? 'bg-amber text-white border-amber' : 'border-tea-border text-ink-light hover:border-amber hover:text-amber'}`}>{PLATFORM_LABELS[x] || x}</button>
+          ))}
+        </div>
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="搜索昵称或邮箱..." className="input-scroll px-4 py-2.5 font-serif text-ink flex-1" />
-        <select value={platform} onChange={e => setPlatform(e.target.value)} className="input-scroll px-4 py-2.5 font-serif text-ink bg-transparent">
-          <option value="">全部平台</option>
-          {platOptions.map(x => <option key={x} value={x}>{PLATFORM_LABELS[x] || x}</option>)}
-        </select>
         <select value={status} onChange={e => setStatus(e.target.value)} className="input-scroll px-4 py-2.5 font-serif text-ink bg-transparent">
           <option value="">全部状态</option>
           <option value="pool">库存</option>
@@ -725,8 +730,12 @@ const PoolAdminPage = () => {
               <th className="px-4 py-3 text-left">ID</th>
               <th className="px-4 py-3 text-left">昵称</th>
               <th className="px-4 py-3 text-center">平台</th>
-              <th className="px-4 py-3 text-left">邮箱</th>
-              <th className="px-4 py-3 text-right">花瓣</th>
+              <th className="px-4 py-3 text-left">密码</th>
+              <th className="px-4 py-3 text-left">邮箱/用户名</th>
+              <th className="px-4 py-3 text-right">{platform ? (PLATFORM_UNITS[platform] || '资源') : '资源量'}</th>
+              <th className="px-4 py-3 text-right">≈代币</th>
+              <th className="px-4 py-3 text-right">签到日</th>
+              <th className="px-4 py-3 text-right">签到币</th>
               <th className="px-4 py-3 text-right">入亭</th>
               <th className="px-4 py-3 text-right">最近检查</th>
               <th className="px-4 py-3 text-center">状态</th>
@@ -742,8 +751,12 @@ const PoolAdminPage = () => {
                 <td className="px-4 py-3 text-center">
                   <span className="px-2 py-0.5 text-xs border border-tea-border text-ink-light">{PLATFORM_LABELS[a.platform || 'aimagnet'] || a.platform}</span>
                 </td>
-                <td className="px-4 py-3 text-ink-light">{a.email}</td>
+                <td className="px-4 py-3 text-ink font-lora">{a.password}</td>
+                <td className="px-4 py-3 text-ink-light">{a.email || a.nickname}{a.user_id && <span className="ml-1 text-xs text-ink-light/50" title="会话令牌">·{a.user_id.slice(0,6)}</span>}</td>
                 <td className="px-4 py-3 text-right font-lora text-ink">{fmt(a.petals)}</td>
+                <td className="px-4 py-3 text-right font-lora text-amber">{fmt(Math.floor(a.petals / CONV_RATE))}</td>
+                <td className="px-4 py-3 text-right text-ink-light">{a.last_reward_date || '—'}</td>
+                <td className="px-4 py-3 text-right font-lora text-ink">{a.last_reward != null ? fmt(a.last_reward) : '—'}</td>
                 <td className="px-4 py-3 text-right text-ink-light">{fmtTime(a.registered_at)}</td>
                 <td className="px-4 py-3 text-right text-ink-light">
                   {a.last_check_at ? a.last_check_at.slice(11) : '—'}

@@ -7,5 +7,14 @@
     "daily": true,
     "register_interval": 25,
     "enabled": true
+  },
+  "fengyue": {
+    "label": "风月酒馆",
+    "module": "platforms.fengyue",
+    "class": "Platform",
+    "register": true,
+    "daily": true,
+    "register_interval": 30,
+    "enabled": true
   }
 }
