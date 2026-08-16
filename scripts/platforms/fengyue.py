@@ -6,7 +6,7 @@
 """
 import os, random, string, time, requests
 from datetime import datetime, timezone, timedelta
-from .base import PlatformBase, all_accounts_fields
+from .base import PlatformBase, all_accounts_fields, is_dup_error
 
 DOMAINS = ["https://ai-xan.xyz", "https://acepro.store", "https://aquantancee.xyz"]
 LOGIN_DOMAINS = ["https://aiaha.xyz", "https://ai-xan.xyz", "https://acepro.store", "https://aquantancee.xyz"]
@@ -50,13 +50,13 @@ class Platform(PlatformBase):
     def register(self, log):
         s = requests.Session()
         s.headers.update(api_headers(referer="https://ai-xan.xyz/zh/register"))
-        name = load_name()
         base = random.choice(DOMAINS)
         try:
             r = s.get(base + "/", timeout=30)
             r.raise_for_status()
             sd = s.get(base + "/go/api/slide/get", timeout=25).json().get("data", {})
             if not sd:
+                self.last_error = "滑块无数据"
                 log("  滑块无数据"); return None
             slide_id, tile_y, reg_token = sd.get("id"), sd.get("tile_y"), sd.get("reg_token")
             x_pos = list(range(0, 301, 5))
@@ -72,24 +72,36 @@ class Platform(PlatformBase):
                     pass
                 time.sleep(random.uniform(0.1, 0.2))
             if not ok_slide:
+                self.last_error = "滑块破解失败"
                 log("  滑块破解失败"); return None
-            pwd = gen_password()
-            body = {"name": name, "password": pwd, "code": "", "client": "web_pc",
-                    "interface_language": "zh-Hans", "reg_token": reg_token}
-            j = s.post(base + "/console/api/register", json=body, timeout=30).json()
-            jwt = j.get("data")
-            if not (isinstance(jwt, str) and jwt.startswith("eyJ")):
-                log(f"  注册失败: {str(j.get('msg') or j.get('message') or '')[:60]}")
-                return None
-            pts = self._points(jwt)
-            return {
-                "platform": self.name,
-                "nickname": name, "password": pwd,
-                "email": f"{name}@fengyue.local", "email_password": "",
-                "user_id": jwt, "registered_at": "",
-                "petals": pts, "status": "pool",
-            }
+            # 重名重试: 换名重新提交注册
+            last_msg = ""
+            for _ in range(5):
+                name = self.gen.next("fengyue") if self.gen else load_name()
+                pwd = gen_password()
+                body = {"name": name, "password": pwd, "code": "", "client": "web_pc",
+                        "interface_language": "zh-Hans", "reg_token": reg_token}
+                j = s.post(base + "/console/api/register", json=body, timeout=30).json()
+                jwt = j.get("data")
+                if isinstance(jwt, str) and jwt.startswith("eyJ"):
+                    pts = self._points(jwt)
+                    return {
+                        "platform": self.name,
+                        "nickname": name, "password": pwd,
+                        "email": f"{name}@fengyue.local", "email_password": "",
+                        "user_id": jwt, "registered_at": "",
+                        "petals": pts, "status": "pool",
+                    }
+                last_msg = str(j.get("msg") or j.get("message") or "")[:120]
+                if is_dup_error(last_msg):
+                    log(f"  重名({last_msg[:30]}), 换名重试")
+                    continue
+                break
+            self.last_error = last_msg or "注册响应无JWT"
+            log(f"  注册失败: {self.last_error[:80]}")
+            return None
         except Exception as e:
+            self.last_error = f"异常:{str(e)[:100]}"
             log(f"  注册异常: {str(e)[:60]}")
             return None
 

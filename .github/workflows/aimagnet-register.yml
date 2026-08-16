@@ -1,7 +1,7 @@
 name: aimagnet-register
 on:
   schedule:
-    - cron: '7 */2 * * *'
+    - cron: '7 * * * *'
   workflow_dispatch:
     inputs:
       count:

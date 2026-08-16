@@ -56,14 +56,26 @@ def main():
         groups.setdefault(a.get("platform") or "aimagnet", []).append(a)
 
     accounts_out, signs, points, health = [], [], [], []
+    err_logs = []          # 渠道报错 -> 上报 Worker
     for name, p in dailies.items():
         grp = groups.get(name, [])
         if not grp:
             print(f"== {p.label}: 无账号, 跳过 ==")
             continue
         print(f"== {p.label}: {len(grp)} 个账号 ==")
-        o, s, pt, h = p.daily(grp, print)
+        try:
+            o, s, pt, h = p.daily(grp, print)
+        except Exception as e:
+            o, s, pt, h = [], [], [], []
+            print(f"== {p.label}: daily 整体异常: {str(e)[:120]}")
+            err_logs.append({"platform": name, "category": "daily", "level": "error",
+                             "message": f"daily整体异常:{str(e)[:300]}"})
         accounts_out += o; signs += s; points += pt; health += h
+        for rec in h:
+            if not rec.get("ok"):
+                cat = "login" if "login" in str(rec.get("error") or "").lower() else "daily"
+                err_logs.append({"platform": name, "category": cat, "level": "error",
+                                 "message": f"account#{rec.get('account_id')}: {str(rec.get('error') or '')[:400]}"})
 
     # 其它平台账号原样回写 (仅保留花瓣/状态)
     known = {name for name in dailies}
@@ -80,7 +92,13 @@ def main():
     body = {"accounts": accounts_out, "sign_records": signs, "points": points, "health": health}
     r = http("POST", f"{API}/api/chunshui/sync", body, token=ADMIN)
     print("同步:", r.status_code, r.text[:200])
-    print(f"完成: 签到 {len(signs)}, 探活 {len(health)}")
+    if err_logs:
+        try:
+            r2 = http("POST", f"{API}/api/channel-logs", {"logs": err_logs}, token=ADMIN)
+            print("报错上报:", r2.status_code, r2.text[:120])
+        except Exception as e:
+            print("报错上报异常:", str(e)[:100])
+    print(f"完成: 签到 {len(signs)}, 探活 {len(health)}, 报错上报 {len(err_logs)} 条")
     sys.exit(0)
 
 if __name__ == "__main__":

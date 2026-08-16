@@ -1,7 +1,7 @@
 name: mishi-register
 on:
   schedule:
-    - cron: '27 */2 * * *'
+    - cron: '27 * * * *'
   workflow_dispatch:
     inputs:
       count:

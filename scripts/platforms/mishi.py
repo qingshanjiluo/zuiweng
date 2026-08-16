@@ -19,7 +19,7 @@
             (mail.tm 可收码, 奖励发放机制待确认)
 """
 import os, re, time, base64, random, string
-from .base import PlatformBase, all_accounts_fields
+from .base import PlatformBase, all_accounts_fields, is_dup_error
 
 try:
     import requests
@@ -80,6 +80,7 @@ class Platform(PlatformBase):
     def register(self, log):
         s = _session()
         if not s:
+            self.last_error = "no-requests"
             log("  no-requests")
             return None
         try:
@@ -89,43 +90,54 @@ class Platform(PlatformBase):
         time.sleep(random.uniform(0.5, 1.5))
         capid, code = self._captcha(s)
         if not capid:
+            self.last_error = "验证码OCR多次失败"
             log("  验证码 OCR 多次失败")
             return None
-        uname, pwd = _rand_user(), _rand_pwd()
-        fp = _rand_fp()
-        body = {"userName": uname, "passWord": pwd, "nickName": uname, "email": "",
-                "phone": "", "headerImg": "", "enable": 1,
-                "inviteCode": INVITE, "deviceFingerprint": fp,
-                "captcha": code, "captchaId": capid}
-        r = s.post(ORIG + "/api/gva/user/register_and_login", json=body,
-                   headers={**_headers(), "x-device-fingerprint": fp}, timeout=30)
-        try:
-            j = r.json()
-        except Exception:
-            log(f"  注册响应非 JSON: {r.status_code}")
-            return None
-        if (j.get("code") or 0) != 0:
-            log(f"  注册失败: {j.get('msg')}")
-            return None
-        d = j.get("data") or {}
-        user = d.get("user") or {}
-        uid = user.get("ID") or user.get("id")
-        if not uid or not d.get("token"):
-            log("  注册返回缺少 uid/token")
-            return None
-        petals = 0
-        try:
-            petals = self._points(s, d["token"])
-        except Exception:
-            pass
-        acc = {
-            "platform": self.name,
-            "nickname": uname,
-            "password": pwd, "email": uname, "email_password": "",
-            "user_id": str(uid), "registered_at": str(user.get("CreatedAt") or ""),
-            "petals": petals, "status": "pool",
-        }
-        return acc
+        # 重名重试: 循环生成新名直到成功或遇非重名错误
+        last_msg = ""
+        for _ in range(5):
+            uname = getattr(self.gen, "next")("missai") if self.gen else _rand_user()
+            pwd = _rand_pwd()
+            fp = _rand_fp()
+            body = {"userName": uname, "passWord": pwd, "nickName": uname, "email": "",
+                    "phone": "", "headerImg": "", "enable": 1,
+                    "inviteCode": INVITE, "deviceFingerprint": fp,
+                    "captcha": code, "captchaId": capid}
+            try:
+                r = s.post(ORIG + "/api/gva/user/register_and_login", json=body,
+                           headers={**_headers(), "x-device-fingerprint": fp}, timeout=30)
+                j = r.json()
+            except Exception as e:
+                last_msg = f"网络异常:{str(e)[:60]}"
+                break
+            if (j.get("code") or 0) != 0:
+                last_msg = f"{j.get('msg')}"
+                if is_dup_error(last_msg):
+                    log(f"  重名({last_msg[:30]}), 换名重试")
+                    continue
+                break
+            d = j.get("data") or {}
+            user = d.get("user") or {}
+            uid = user.get("ID") or user.get("id")
+            if not uid or not d.get("token"):
+                last_msg = "注册返回缺少uid/token"
+                break
+            petals = 0
+            try:
+                petals = self._points(s, d["token"])
+            except Exception:
+                pass
+            acc = {
+                "platform": self.name,
+                "nickname": uname,
+                "password": pwd, "email": uname, "email_password": "",
+                "user_id": str(uid), "registered_at": str(user.get("CreatedAt") or ""),
+                "petals": petals, "status": "pool",
+            }
+            return acc
+        self.last_error = last_msg
+        log(f"  注册失败: {last_msg[:100]}")
+        return None
 
     # ---------- 每日任务 (登录->签到->积分) ----------
     def daily(self, accounts, log):

@@ -36,31 +36,51 @@ def main():
     per = max(1, (COUNT + SHARDS - 1) // SHARDS)
     print(f"本轮注册: " + ", ".join(f"{p.label} x{COUNT}(shard {SHARD}/{SHARDS}: {per}个)" for p in regs.values()))
     accounts = []
+    err_logs = []          # 渠道报错 -> 上报 Worker
     for name, p in regs.items():
         print(f"== {p.label} ({name}) ==")
         got = 0
         for i in range(per):
             print(f"[{i+1}/{per}] 注册中...")
             acc = None
-            for attempt in range(2):
+            err_text = ""
+            for attempt in range(3):
+                p.last_error = ""
                 try:
                     acc = p.register(print)
                     if acc:
                         break
+                    err_text = p.last_error or "未知失败"
                 except Exception as e:
+                    err_text = f"异常:{str(e)[:200]}"
                     print(f"  异常: {str(e)[:100]}")
             if acc:
                 accounts.append(acc)
                 got += 1
                 print(f"  OK {acc['nickname']} petals={acc['petals']}")
+            else:
+                print(f"  注册失败: {err_text[:120]}")
+                err_logs.append({"platform": name, "category": "register",
+                                 "level": "error", "message": err_text[:500]})
             # 随机人类节奏间隔, 降低批量特征
             time.sleep(getattr(p, "register_interval", 25) * random.uniform(0.8, 1.6))
         print(f"{p.label}: 新注册 {got}/{per}")
     if not accounts:
-        print("全部失败"); sys.exit(1)
+        print("全部失败")
+        try:
+            http("POST", f"{API}/api/channel-logs", {"logs": err_logs}, token=ADMIN)
+        except Exception:
+            pass
+        sys.exit(1)
     r = http("POST", f"{API}/api/chunshui/sync", {"accounts": accounts}, token=ADMIN)
     print("同步:", r.status_code, r.text[:200])
-    print(f"完成: 新注册并入库 {len(accounts)} 个")
+    if err_logs:
+        try:
+            r2 = http("POST", f"{API}/api/channel-logs", {"logs": err_logs}, token=ADMIN)
+            print("报错上报:", r2.status_code, r2.text[:120])
+        except Exception as e:
+            print("报错上报异常:", str(e)[:100])
+    print(f"完成: 新注册并入库 {len(accounts)} 个, 失败上报 {len(err_logs)} 条")
     sys.exit(0)
 
 if __name__ == "__main__":

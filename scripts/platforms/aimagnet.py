@@ -34,20 +34,24 @@ class Platform(PlatformBase):
         log(f"  邮箱 {email}")
         r = am.register_start(email)
         if r.status_code != 200:
+            self.last_error = f"register/start {r.status_code}: {r.text[:120]}"
             log(f"  register/start {r.status_code}: {r.text[:120]}")
             return None
         code = mt.wait_code(email, epwd, timeout=90)
         if not code:
+            self.last_error = "收码超时"
             log("  收码超时")
             return None
         log(f"  验证码 {code}")
         r = am.register_complete(email, code)
         if r.status_code != 200:
+            self.last_error = f"register/complete {r.status_code}: {r.text[:120]}"
             log(f"  register/complete {r.status_code}: {r.text[:120]}")
             return None
         try:
             user, token = am.login(email, am.pwd)
         except Exception as e:
+            self.last_error = f"login失败:{str(e)[:100]}"
             log(f"  login 失败: {str(e)[:100]}")
             return None
         petals = 0
