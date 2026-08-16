@@ -25,5 +25,14 @@
     "daily": true,
     "register_interval": 30,
     "enabled": true
+  },
+  "missai": {
+    "label": "密丝AI",
+    "module": "platforms.mishi",
+    "class": "Platform",
+    "register": true,
+    "daily": true,
+    "register_interval": 30,
+    "enabled": true
   }
 }

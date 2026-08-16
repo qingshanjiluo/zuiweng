@@ -1,0 +1,36 @@
+name: mishi-register
+on:
+  schedule:
+    - cron: '27 */2 * * *'
+  workflow_dispatch:
+    inputs:
+      count:
+        description: '本轮注册量'
+        required: false
+        default: '200'
+      shards:
+        description: '并行 job 数'
+        required: false
+        default: '4'
+
+jobs:
+  register:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - run: pip install requests curl_cffi ddddocr
+      - run: python scripts/register_driver.py
+        env:
+          ZUIWENG_API: ${{ secrets.ZUIWENG_API }}
+          ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+          COUNT: ${{ github.event.inputs.count || '200' }}
+          SHARDS: ${{ github.event.inputs.shards || '4' }}
+          SHARD: ${{ matrix.shard }}
+          PLATFORM: missai
