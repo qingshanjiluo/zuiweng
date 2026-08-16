@@ -773,7 +773,7 @@ const App = () => {
   const go = (page, param) => { setPage(page); setPageParam(param); };
   useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }, [currentPage]);
 
-  const onAuthed = (u) => { setUser(u); setPage('home'); };
+  const onAuthed = (u) => { setUser(u); refreshUser(); setPage('home'); };
   const onLogout = () => { localStorage.removeItem('zw_token'); localStorage.removeItem('zw_user'); setUser(null); setPage('home'); };
   const refreshUser = () => {
     if (getToken()) api('GET', '/api/wallet').then(d => { localStorage.setItem('zw_user', JSON.stringify(d.user)); setUser(d.user); }).catch(() => {});
