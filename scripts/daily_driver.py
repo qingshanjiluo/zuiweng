@@ -51,8 +51,15 @@ def main():
             off += 5000
     print(f"号池 {len(accs)} 个账号, 日期 {TODAY}, 平台: {', '.join(dailies)}")
 
+    # 只对活跃账号签到/探活: pool(未售)/on_sale(在售). sold(已售)/disabled(停用) 停止每日任务
+    ACTIVE = {"pool", "on_sale"}
+    active = [a for a in accs if a.get("status") in ACTIVE]
+    inactive = [a for a in accs if a.get("status") not in ACTIVE]
+    if inactive:
+        print(f"跳过 {len(inactive)} 个非活跃账号 (sold/disabled 等), 仅保留原状态回写")
+
     groups = {}
-    for a in accs:
+    for a in active:
         groups.setdefault(a.get("platform") or "aimagnet", []).append(a)
 
     accounts_out, signs, points, health = [], [], [], []
@@ -87,7 +94,15 @@ def main():
                                  "nickname": a.get("nickname"), "password": a.get("password"),
                                  "email_password": a.get("email_password") or "", "user_id": a.get("user_id") or "",
                                  "registered_at": a.get("registered_at") or "", "petals": a.get("petals", 0),
-                                 "status": a.get("status", "pool")})
+                                 "stardust": a.get("stardust", 0), "status": a.get("status", "pool")})
+
+    # 非活跃账号 (sold/disabled) 原样回写, 保持状态不变, 不签到探活
+    for a in inactive:
+        accounts_out.append({"id": a["id"], "platform": a.get("platform") or "aimagnet",
+                             "email": a.get("email") or "", "nickname": a.get("nickname") or "",
+                             "password": a.get("password") or "", "email_password": a.get("email_password") or "",
+                             "user_id": a.get("user_id") or "",                              "registered_at": a.get("registered_at") or "",
+                             "petals": a.get("petals", 0), "stardust": a.get("stardust", 0), "status": a.get("status", "pool")})
 
     body = {"accounts": accounts_out, "sign_records": signs, "points": points, "health": health}
     r = http("POST", f"{API}/api/chunshui/sync", body, token=ADMIN)

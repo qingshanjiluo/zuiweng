@@ -114,4 +114,4 @@ def build_platforms(config=None):
 def all_accounts_fields():
     """sync 到 Worker 所需的完整字段列表 (防止缺字段导致的 undefined 问题)"""
     return ["platform", "nickname", "password", "email", "email_password",
-            "user_id", "registered_at", "petals", "status"]
+            "user_id", "registered_at", "petals", "stardust", "status"]

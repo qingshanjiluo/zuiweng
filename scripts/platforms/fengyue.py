@@ -119,6 +119,7 @@ class Platform(PlatformBase):
                     err = "login失败"
                 else:
                     pts = self._points(jwt)
+                    sdu = self._stardust(jwt)          # 星尘 (签到真实代币)
                     signed = self._today_signed(jwt)
                     reward, sstat = None, "ALREADY" if signed else "SKIP"
                     if not signed:
@@ -126,22 +127,26 @@ class Platform(PlatformBase):
             except Exception as e:
                 err = f"exc:{str(e)[:60]}"
                 pts, sstat, reward = None, "ERR", None
+                sdu = None
             if err:
                 log(f"[{a['id']}] {name} FAIL {err}")
             else:
                 ok += 1
-                log(f"[{a['id']}] {name} sign={sstat} reward={reward} petals={pts}")
+                log(f"[{a['id']}] {name} sign={sstat} reward={reward} petals={pts} stardust={sdu}")
             out = {k: a.get(k) or "" for k in all_accounts_fields()}
             out.update({"id": a["id"], "email": a.get("email") or "", "nickname": name,
                         "password": pwd, "petals": pts if pts is not None else a.get("petals", 0),
+                        "stardust": sdu if sdu is not None else a.get("stardust", 0),
                         "status": a.get("status", "pool")})
             accounts_out.append(out)
             if sstat in ("SIGNED", "ALREADY"):
                 signs.append({"account_id": a["id"], "date": today, "status": sstat, "reward": reward or 0})
-            if pts is not None:
-                points.append({"account_id": a["id"], "date": today, "petals": int(pts)})
+            if pts is not None or sdu is not None:
+                points.append({"account_id": a["id"], "date": today,
+                               "petals": int(pts or 0), "stardust": int(sdu or 0)})
             health.append({"account_id": a["id"], "ok": 0 if err else 1,
-                           "error": err or "", "petals": pts if pts is not None else a.get("petals", 0)})
+                           "error": err or "", "petals": pts if pts is not None else a.get("petals", 0),
+                           "stardust": sdu if sdu is not None else a.get("stardust", 0)})
             time.sleep(2)
         return accounts_out, signs, points, health
 
@@ -171,6 +176,18 @@ class Platform(PlatformBase):
             except Exception:
                 continue
         return 0
+
+    def _stardust(self, jwt):
+        """星尘: 签到获得的真实代币 (签到页显示 '当前星尘'). GET /console/api/stardust/balance"""
+        for base in LOGIN_DOMAINS:
+            try:
+                r = requests.get(f"{base}/console/api/stardust/balance", headers=api_headers(jwt), timeout=25)
+                j = r.json()
+                if j.get("code") == 200 and j.get("data"):
+                    return int(float(j["data"].get("current_amount") or 0))
+            except Exception:
+                continue
+        return None
 
     def _today_signed(self, jwt):
         for base in LOGIN_DOMAINS:
