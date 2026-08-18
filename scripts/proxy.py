@@ -115,7 +115,7 @@ def build_config():
         "proxy-groups": [{
             "name": "PROXY", "type": "load-balance",
             "proxies": names, "url": "http://www.gstatic.com/generate_204", "interval": 300,
-            "strategy": os.environ.get("PROXY_STRATEGY", "random"),
+            "strategy": os.environ.get("PROXY_STRATEGY", "round-robin"),
         }],
         # 分流: Worker API/mail.tm 等直连, 其余平台走代理
         "rules": [f"DOMAIN-SUFFIX,{d.strip()},DIRECT"
