@@ -28,7 +28,10 @@ def api_headers(auth=None, referer=None):
 
 def gen_password():
     chars = string.ascii_letters + string.digits
-    return ''.join(random.choices(chars, k=8))
+    while True:
+        pwd = ''.join(random.choices(chars, k=8))
+        if any(c.isalpha() for c in pwd) and any(c.isdigit() for c in pwd):
+            return pwd
 
 
 def load_name():
