@@ -97,8 +97,13 @@ def build_config():
         text = base64.b64decode(padded).decode("utf-8", "replace")
         d = yaml.safe_load(text)
     proxies = d.get("proxies") or []
-    if not proxies:
-        print("订阅无可用节点"); sys.exit(1)
+    if len(proxies) < 5:
+        print(f"订阅无效(机场限流/套餐超限): 仅 {len(proxies)} 节点, 可能返回提示页")
+        sys.exit(1)
+    fake = [p for p in proxies if str(p.get("server", "")).startswith("127.")]
+    if fake:
+        print(f"订阅被机场限流(返回提示页/假节点): 请检查机场设备数是否超限")
+        sys.exit(1)
     names = [p["name"] for p in proxies]
     cfg = {
         "mixed-port": PORT,
@@ -108,8 +113,9 @@ def build_config():
         "log-level": "warning",
         "proxies": proxies,
         "proxy-groups": [{
-            "name": "PROXY", "type": "url-test",
+            "name": "PROXY", "type": "load-balance",
             "proxies": names, "url": "http://www.gstatic.com/generate_204", "interval": 300,
+            "strategy": os.environ.get("PROXY_STRATEGY", "random"),
         }],
         # 分流: Worker API/mail.tm 等直连, 其余平台走代理
         "rules": [f"DOMAIN-SUFFIX,{d.strip()},DIRECT"
