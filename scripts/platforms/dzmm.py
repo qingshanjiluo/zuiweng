@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """DZMM (www.dzmm.ai) 适配器
-注册受 Cloudflare Turnstile 拦截 (需浏览器+邮箱OTP), 适配器不自动注册.
-但登录与每日签到均为纯 API 且无验证码, 可全自动:
+注册受 Cloudflare Turnstile 拦截, 需真实浏览器(headless Chromium)+邮箱OTP:
+  Playwright 填注册表 -> Turnstile 自动通过 -> mail.tm 收验证码 -> 完成注册
+登录与每日签到为纯 API 且无验证码, 可全自动:
   POST /api/auth/sign-in {email,password}          -> 200, cookie (sb-rls-auth-token, 有效期1h)
   POST /api/trpc/tasks.initCheckin {"json":null}   -> {token, mirrors}
   POST /api/trpc/tasks.claim {"json":{"taskKey":"daily_checkin","checkinToken":token}}
   GET  /api/trpc/credits.getBalance                -> 积分
 需 curl_cffi (chrome124 TLS 指纹) 才能通过 Turnstile 网络层.
 """
-import os, random, time
+import os, random, string, time, re
 from datetime import datetime, timezone, timedelta
 from .base import PlatformBase, all_accounts_fields
 
@@ -18,6 +19,18 @@ try:
 except Exception:
     cr = None
 
+try:
+    import requests
+except Exception:
+    requests = None
+
+try:
+    from playwright.sync_api import sync_playwright
+    _HAS_PW = True
+except Exception:
+    _HAS_PW = False
+
+MT = "https://api.mail.tm"
 BASE = "https://www.dzmm.ai"
 TZ = timezone(timedelta(hours=8))
 TRPC_IN = "%7B%22json%22%3Anull%2C%22meta%22%3A%7B%22values%22%3A%5B%22undefined%22%5D%2C%22v%22%3A1%7D%7D"
@@ -55,8 +68,162 @@ class Platform(PlatformBase):
     label = "DZMM"
 
     def register(self, log):
-        log("  DZMM 注册受 Turnstile 拦截, 需浏览器+邮箱OTP, 不支持 API 自动注册")
+        if not _HAS_PW:
+            self.last_error = "no-playwright"
+            log("  no-playwright")
+            return None
+        # 1. 创建临时邮箱 (mail.tm)
+        addr, mpwd = self._make_mailbox()
+        if not addr:
+            self.last_error = "mail.tm 创建失败"
+            log(f"  {self.last_error}")
+            return None
+        log(f"  邮箱 {addr}")
+        app_pwd = "Dz" + "".join(random.choices(string.ascii_letters + string.digits, k=8)) + "1"
+        # 2. Playwright 浏览器注册
+        uid, petals = self._browser_register(addr, app_pwd, mpwd, log)
+        if not uid:
+            return None
+        return {
+            "platform": self.name,
+            "nickname": addr.split("@")[0],
+            "password": app_pwd, "email": addr, "email_password": mpwd,
+            "user_id": str(uid), "registered_at": "",
+            "petals": petals, "status": "pool",
+        }
+
+    # ---------- 注册: mail.tm 邮箱 ----------
+    def _make_mailbox(self):
+        if requests is None:
+            return None, None
+        h = {"user-agent": UA, "content-type": "application/json"}
+        addr = "dz" + "".join(random.choices(string.ascii_lowercase + string.digits, k=10)) + "@emalupe.com"
+        pwd = "MailTmp" + "".join(random.choices(string.ascii_letters + string.digits, k=6)) + "1"
+        for _ in range(6):
+            try:
+                r = requests.post(MT + "/accounts", json={"address": addr, "password": pwd}, headers=h, timeout=25)
+                if r.status_code in (201, 422):
+                    return addr, pwd
+            except Exception:
+                pass
+            time.sleep(random.uniform(2, 4))
+        return None, None
+
+    def _wait_code(self, addr, mpwd, timeout=120):
+        if requests is None:
+            return None
+        h = {"user-agent": UA, "content-type": "application/json"}
+        t0 = time.time()
+        while time.time() - t0 < timeout:
+            try:
+                r = requests.post(MT + "/token", json={"address": addr, "password": mpwd}, headers=h, timeout=25)
+                if r.status_code == 200:
+                    mh = {"authorization": "Bearer " + r.json()["token"], "user-agent": UA}
+                    r2 = requests.get(MT + "/messages", headers=mh, timeout=25)
+                    msgs = r2.json().get("hydra:member", [])
+                    if msgs:
+                        mid = msgs[0]["id"]
+                        full = requests.get(f"{MT}/messages/{mid}", headers=mh, timeout=25).json()
+                        raw = (full.get("intro") or "") + " " + (full.get("text") or "")
+                        clean = re.sub(r"[\s\u200b\u200c\u200d\ufeff]", "", raw)
+                        codes = re.findall(r"\d{4,8}", clean)
+                        if codes:
+                            return codes[0]
+            except Exception:
+                pass
+            time.sleep(5)
         return None
+
+    # ---------- 注册: Playwright 浏览器流程 ----------
+    def _browser_register(self, addr, app_pwd, mpwd, log):
+        try:
+            with sync_playwright() as p:
+                browser = p.chromium.launch(
+                    headless=True, args=["--disable-blink-features=AutomationControlled"])
+                ctx = browser.new_context(
+                    user_agent=UA, locale="zh-CN", viewport={"width": 1280, "height": 800})
+                ctx.add_init_script(
+                    "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});")
+                page = ctx.new_page()
+                page.goto(BASE + "/sign-in?s=signup", timeout=60000)
+                page.wait_for_timeout(2500)
+                page.fill("input[type=email]", addr)
+                page.fill("input[type=password]", app_pwd)
+                # 勾选协议
+                try:
+                    page.check("input[type=checkbox]", timeout=5000)
+                except Exception:
+                    page.evaluate("() => { const el = document.querySelector('input[type=checkbox]'); if (el && !el.checked) el.click(); }")
+                page.wait_for_timeout(1200)
+                page.click("button:has-text('注册')", timeout=10000)
+                # 轮询等待进入验证页 (Turnstile 验证耗时不定)
+                body = ""
+                for _ in range(15):
+                    page.wait_for_timeout(1500)
+                    try:
+                        body = page.inner_text("body")
+                    except Exception:
+                        body = ""
+                    if "同意并" in body:
+                        try:
+                            page.click("button:has-text('同意并')", timeout=5000)
+                        except Exception:
+                            pass
+                        continue
+                    if "验证你的邮箱" in body:
+                        break
+                if "验证你的邮箱" not in body:
+                    self.last_error = f"未进入验证页: {body[:100]}"
+                    log(f"  未进入验证页: {body[:80]}")
+                    browser.close()
+                    return None, 0
+                # 收验证码
+                code = self._wait_code(addr, mpwd, timeout=120)
+                if not code:
+                    self.last_error = "验证码收码超时"
+                    log(f"  验证码收码超时")
+                    browser.close()
+                    return None, 0
+                log(f"  验证码 {code}")
+                page.locator('input[maxlength="8"]').fill(code)
+                page.wait_for_timeout(800)
+                page.click("button:has-text('验证')", timeout=8000)
+                page.wait_for_timeout(5000)
+                url = page.url
+                browser.close()
+                if not url.startswith(BASE + "/"):
+                    self.last_error = "注册后未登录"
+                    log(f"  注册后未登录 url={url}")
+                    return None, 0
+                # 3. API 登录拿 user_id + 积分
+                uid, petals = self._api_login_petals(addr, app_pwd)
+                if not uid:
+                    self.last_error = "注册成功但API登录失败"
+                    log(f"  注册成功但API登录失败")
+                    return None, 0
+                log(f"  注册OK user_id={uid} petals={petals}")
+                return uid, petals
+        except Exception as e:
+            self.last_error = f"浏览器异常:{str(e)[:100]}"
+            log(f"  浏览器异常: {str(e)[:80]}")
+            return None, 0
+
+    def _api_login_petals(self, addr, app_pwd):
+        if cr is None:
+            return None, 0
+        try:
+            s = _session()
+            if not s:
+                return None, 0
+            s.get(BASE + "/", timeout=30)
+            j = s.post(BASE + "/api/auth/sign-in",
+                       json={"email": addr, "password": app_pwd}, timeout=30).json()
+            u = j.get("user") or {}
+            if not u.get("id"):
+                return None, 0
+            return u["id"], self._points(s)
+        except Exception:
+            return None, 0
 
     # ---------- 每日任务 (登录->积分->签到) ----------
     def daily(self, accounts, log):

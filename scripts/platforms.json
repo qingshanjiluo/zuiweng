@@ -21,9 +21,9 @@
     "label": "DZMM",
     "module": "platforms.dzmm",
     "class": "Platform",
-    "register": false,
+    "register": true,
     "daily": true,
-    "register_interval": 30,
+    "register_interval": 20,
     "enabled": true
   },
   "missai": {
