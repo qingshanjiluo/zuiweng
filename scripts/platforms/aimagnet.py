@@ -123,14 +123,22 @@ class Platform(PlatformBase):
             return None, None, None, err
         tok = j["tokens"]["accessToken"]
         uid = user_id or j["user"]["id"]
-        st = requests.get(f"{AB}/v1/users/signin/status", headers={**h, "authorization": f"Bearer {tok}"}, timeout=25).json()
-        today_signed = bool(st.get("todaySigned"))
+        st = requests.get(f"{AB}/v1/users/signin/status", headers={**h, "authorization": f"Bearer {tok}"}, timeout=25)
+        if st.status_code == 403:
+            return None, None, None, "banned"
+        try:
+            stj = st.json()
+        except Exception:
+            return None, None, None, f"signin/status:{st.status_code}"
+        today_signed = bool(stj.get("todaySigned"))
         reward, sstat = None, "ALREADY" if today_signed else "SKIP"
         if not today_signed:
             r = requests.post(f"{AB}/v1/users/signin", headers={**h, "authorization": f"Bearer {tok}"}, timeout=25)
             if r.status_code == 200:
                 reward = r.json().get("petalsGranted")
                 sstat = "SIGNED"
+            elif r.status_code == 403:
+                return None, None, None, "banned"
             else:
                 sstat = f"ERR:{r.status_code}"
         petals = None

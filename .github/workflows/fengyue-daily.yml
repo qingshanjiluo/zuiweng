@@ -3,10 +3,19 @@ on:
   schedule:
     - cron: '25 0 * * *'
   workflow_dispatch:
+    inputs:
+      shards:
+        description: '并行 job 数'
+        required: false
+        default: '4'
 
 jobs:
   daily:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -18,3 +27,6 @@ jobs:
           ZUIWENG_API: ${{ secrets.ZUIWENG_API }}
           ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
           PLATFORM: fengyue
+          SHARDS: ${{ github.event.inputs.shards || '4' }}
+          SHARD: ${{ matrix.shard }}
+          BATCH: '400'

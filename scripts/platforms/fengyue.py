@@ -57,7 +57,7 @@ class Platform(PlatformBase):
         try:
             r = s.get(base + "/", timeout=30)
             r.raise_for_status()
-            sd = s.get(base + "/go/api/slide/get", timeout=25).json().get("data", {})
+            sd = s.get(base + "/go/api/slide/get", timeout=12).json().get("data", {})
             if not sd:
                 self.last_error = "滑块无数据"
                 log("  滑块无数据"); return None
@@ -67,7 +67,7 @@ class Platform(PlatformBase):
             ok_slide = False
             for x in x_pos:
                 try:
-                    j = s.post(base + "/go/api/slide/check", json={"id": slide_id, "point": f"{x},{tile_y}"}, timeout=25).json()
+                    j = s.post(base + "/go/api/slide/check", json={"id": slide_id, "point": f"{x},{tile_y}"}, timeout=12).json()
                     if j.get("code") == 100000:
                         ok_slide = True
                         break
@@ -150,7 +150,7 @@ class Platform(PlatformBase):
             health.append({"account_id": a["id"], "ok": 0 if err else 1,
                            "error": err or "", "petals": pts if pts is not None else a.get("petals", 0),
                            "stardust": sdu if sdu is not None else a.get("stardust", 0)})
-            time.sleep(2)
+            time.sleep(0.2)
         return accounts_out, signs, points, health
 
     # ---------- 底层接口 (多域名容错) ----------
@@ -158,7 +158,7 @@ class Platform(PlatformBase):
         for base in LOGIN_DOMAINS:
             try:
                 r = requests.post(f"{base}/console/api/login", json={"email": name, "password": pwd},
-                                  headers=api_headers(referer=f"{base}/zh/signin"), timeout=25)
+                                  headers=api_headers(referer=f"{base}/zh/signin"), timeout=12)
                 j = r.json()
                 if j.get("result") == "success" and isinstance(j.get("data"), str):
                     return j["data"]
@@ -169,7 +169,7 @@ class Platform(PlatformBase):
     def _points(self, jwt):
         for base in LOGIN_DOMAINS:
             try:
-                r = requests.get(f"{base}/go/api/account/point", headers=api_headers(jwt), timeout=25)
+                r = requests.get(f"{base}/go/api/account/point", headers=api_headers(jwt), timeout=12)
                 j = r.json()
                 if j.get("code") == 100000:
                     try:
@@ -184,7 +184,7 @@ class Platform(PlatformBase):
         """星尘: 签到获得的真实代币 (签到页显示 '当前星尘'). GET /console/api/stardust/balance"""
         for base in LOGIN_DOMAINS:
             try:
-                r = requests.get(f"{base}/console/api/stardust/balance", headers=api_headers(jwt), timeout=25)
+                r = requests.get(f"{base}/console/api/stardust/balance", headers=api_headers(jwt), timeout=12)
                 j = r.json()
                 if j.get("code") == 200 and j.get("data"):
                     return int(float(j["data"].get("current_amount") or 0))
@@ -197,7 +197,7 @@ class Platform(PlatformBase):
             try:
                 r = requests.get(f"{base}/console/api/monthly_calendar",
                                  params={"date": datetime.now(TZ).strftime("%Y-%m")},
-                                 headers=api_headers(jwt), timeout=25)
+                                 headers=api_headers(jwt), timeout=12)
                 j = r.json()
                 if j.get("code") == 200:
                     today = datetime.now(TZ).strftime("%Y-%m-%d")
@@ -212,7 +212,7 @@ class Platform(PlatformBase):
     def _sign(self, jwt):
         for base in LOGIN_DOMAINS:
             try:
-                r = requests.get(f"{base}/console/api/sign_in", headers=api_headers(jwt), timeout=25)
+                r = requests.get(f"{base}/console/api/sign_in", headers=api_headers(jwt), timeout=12)
                 j = r.json()
                 if j.get("code") == 200:
                     return j.get("data", {}).get("reward", 0), "SIGNED"
