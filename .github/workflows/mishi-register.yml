@@ -26,6 +26,16 @@ jobs:
         with:
           python-version: '3.10'
       - run: pip install requests curl_cffi ddddocr
+      - name: 启动机场代理
+        run: |
+          pip install pyyaml -q
+          python scripts/proxy.py start
+          echo "PROXY_URL=http://127.0.0.1:7890" >> $GITHUB_ENV
+          echo "HTTP_PROXY=http://127.0.0.1:7890" >> $GITHUB_ENV
+          echo "HTTPS_PROXY=http://127.0.0.1:7890" >> $GITHUB_ENV
+          echo "NO_PROXY=zuiweng-api.workers.dev,mail.tm" >> $GITHUB_ENV
+        env:
+          SUB_URL: ${{ secrets.SUB_URL }}
       - run: python scripts/register_driver.py
         env:
           ZUIWENG_API: ${{ secrets.ZUIWENG_API }}

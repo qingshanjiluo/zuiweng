@@ -33,6 +33,7 @@ except Exception:
 MT = "https://api.mail.tm"
 BASE = "https://www.dzmm.ai"
 TZ = timezone(timedelta(hours=8))
+PROXY = os.environ.get("PROXY_URL", "")
 TRPC_IN = "%7B%22json%22%3Anull%2C%22meta%22%3A%7B%22values%22%3A%5B%22undefined%22%5D%2C%22v%22%3A1%7D%7D"
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "Chrome/150.0.0.0 Safari/537.36")
@@ -58,7 +59,10 @@ def _headers():
 def _session(proxies=None):
     if cr is None:
         return None
-    s = cr.Session(impersonate="chrome124", proxies=proxies or {})
+    px = proxies or PROXY or {}
+    if isinstance(px, str):
+        px = {"http": px, "https": px}
+    s = cr.Session(impersonate="chrome124", proxies=px)
     s.headers.update(_headers())
     return s
 
@@ -137,9 +141,12 @@ class Platform(PlatformBase):
     # ---------- 注册: Playwright 浏览器流程 ----------
     def _browser_register(self, addr, app_pwd, mpwd, log):
         try:
+            launch_kwargs = {"headless": os.environ.get("DZMM_HEADFUL", "0") != "1",
+                             "args": ["--disable-blink-features=AutomationControlled"]}
+            if PROXY:
+                launch_kwargs["proxy"] = {"server": PROXY}
             with sync_playwright() as p:
-                browser = p.chromium.launch(
-                    headless=True, args=["--disable-blink-features=AutomationControlled"])
+                browser = p.chromium.launch(**launch_kwargs)
                 ctx = browser.new_context(
                     user_agent=UA, locale="zh-CN", viewport={"width": 1280, "height": 800})
                 ctx.add_init_script(

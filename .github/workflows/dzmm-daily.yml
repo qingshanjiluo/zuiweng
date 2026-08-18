@@ -14,6 +14,16 @@ jobs:
           python-version: '3.10'
       - run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev
       - run: pip install requests "curl_cffi==0.15.0"
+      - name: 启动机场代理
+        run: |
+          pip install pyyaml -q
+          python scripts/proxy.py start
+          echo "PROXY_URL=http://127.0.0.1:7890" >> $GITHUB_ENV
+          echo "HTTP_PROXY=http://127.0.0.1:7890" >> $GITHUB_ENV
+          echo "HTTPS_PROXY=http://127.0.0.1:7890" >> $GITHUB_ENV
+          echo "NO_PROXY=zuiweng-api.workers.dev,mail.tm" >> $GITHUB_ENV
+        env:
+          SUB_URL: ${{ secrets.SUB_URL }}
       - run: python -c "from curl_cffi import requests; print('curl_cffi import OK')"
       - run: python scripts/daily_driver.py
         env:
