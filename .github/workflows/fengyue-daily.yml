@@ -30,3 +30,4 @@ jobs:
           SHARDS: ${{ github.event.inputs.shards || '4' }}
           SHARD: ${{ matrix.shard }}
           BATCH: '400'
+          FY_CONCURRENCY: '3'

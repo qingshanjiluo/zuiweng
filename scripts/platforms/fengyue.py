@@ -110,10 +110,15 @@ class Platform(PlatformBase):
 
     # ---------- 每日任务 (登录->积分->日历->签到->抽奖) ----------
     def daily(self, accounts, log):
+        import concurrent.futures
+        n = int(os.environ.get("FY_CONCURRENCY", "3"))
         accounts_out, signs, points, health = [], [], [], []
         ok = 0
         today = datetime.now(TZ).strftime("%Y-%m-%d")
-        for a in accounts:
+        results = [None] * len(accounts)
+
+        def work(i):
+            a = accounts[i]
             name, pwd = a.get("nickname"), a.get("password")
             err = None
             try:
@@ -134,23 +139,40 @@ class Platform(PlatformBase):
             if err:
                 log(f"[{a['id']}] {name} FAIL {err}")
             else:
-                ok += 1
                 log(f"[{a['id']}] {name} sign={sstat} reward={reward} petals={pts} stardust={sdu}")
             out = {k: a.get(k) or "" for k in all_accounts_fields()}
             out.update({"id": a["id"], "email": a.get("email") or "", "nickname": name,
                         "password": pwd, "petals": pts if pts is not None else a.get("petals", 0),
                         "stardust": sdu if sdu is not None else a.get("stardust", 0),
                         "status": a.get("status", "pool")})
-            accounts_out.append(out)
+            si = pt = None
             if sstat in ("SIGNED", "ALREADY"):
-                signs.append({"account_id": a["id"], "date": today, "status": sstat, "reward": reward or 0})
+                si = {"account_id": a["id"], "date": today, "status": sstat, "reward": reward or 0}
             if pts is not None or sdu is not None:
-                points.append({"account_id": a["id"], "date": today,
-                               "petals": int(pts or 0), "stardust": int(sdu or 0)})
-            health.append({"account_id": a["id"], "ok": 0 if err else 1,
-                           "error": err or "", "petals": pts if pts is not None else a.get("petals", 0),
-                           "stardust": sdu if sdu is not None else a.get("stardust", 0)})
+                pt = {"account_id": a["id"], "date": today,
+                      "petals": int(pts or 0), "stardust": int(sdu or 0)}
+            hi = {"account_id": a["id"], "ok": 0 if err else 1,
+                  "error": err or "", "petals": pts if pts is not None else a.get("petals", 0),
+                  "stardust": sdu if sdu is not None else a.get("stardust", 0)}
             time.sleep(0.2)
+            return out, si, pt, hi
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=n) as ex:
+            futs = {ex.submit(work, i): i for i in range(len(accounts))}
+            for f in concurrent.futures.as_completed(futs):
+                res = f.result()
+                if res:
+                    results[futs[f]] = res
+        for r in results:
+            if not r:
+                continue
+            out, si, pt, hi = r
+            accounts_out.append(out)
+            if si:
+                signs.append(si)
+            if pt:
+                points.append(pt)
+            health.append(hi)
         return accounts_out, signs, points, health
 
     # ---------- 底层接口 (多域名容错) ----------
