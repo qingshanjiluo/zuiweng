@@ -11,7 +11,7 @@ on:
       shards:
         description: '并行 job 数'
         required: false
-        default: '8'
+        default: '4'
 
 jobs:
   register:
@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+        shard: [0, 1, 2, 3]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -32,6 +32,6 @@ jobs:
           ZUIWENG_API: ${{ secrets.ZUIWENG_API }}
           ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
           COUNT: ${{ github.event.inputs.count || '40' }}
-          SHARDS: ${{ github.event.inputs.shards || '8' }}
+          SHARDS: ${{ github.event.inputs.shards || '4' }}
           SHARD: ${{ matrix.shard }}
           PLATFORM: dzmm
