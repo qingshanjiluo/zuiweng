@@ -1,0 +1,32 @@
+name: weavai-register
+on:
+  schedule:
+    - cron: '47 * * * *'
+  workflow_dispatch:
+    inputs:
+      shards:
+        description: '并行 job 数 (每个 job 注册 1 个, 因 weavai 每 IP 限 1 账号)'
+        required: false
+        default: '8'
+
+jobs:
+  register:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - run: pip install requests
+      - run: python scripts/register_driver.py
+        env:
+          ZUIWENG_API: ${{ secrets.ZUIWENG_API }}
+          ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+          COUNT: '1'
+          SHARDS: ${{ github.event.inputs.shards || '8' }}
+          SHARD: ${{ matrix.shard }}
+          PLATFORM: weavai

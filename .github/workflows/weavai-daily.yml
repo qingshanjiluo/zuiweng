@@ -1,0 +1,20 @@
+name: weavai-daily
+on:
+  schedule:
+    - cron: '12 4 * * *'
+  workflow_dispatch:
+
+jobs:
+  daily:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - run: pip install requests
+      - run: python scripts/daily_driver.py
+        env:
+          ZUIWENG_API: ${{ secrets.ZUIWENG_API }}
+          ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+          PLATFORM: weavai

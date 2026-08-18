@@ -34,5 +34,14 @@
     "daily": true,
     "register_interval": 30,
     "enabled": true
+  },
+  "weavai": {
+    "label": "AI织梦",
+    "module": "platforms.weavai",
+    "class": "Platform",
+    "register": true,
+    "daily": true,
+    "register_interval": 30,
+    "enabled": true
   }
 }
