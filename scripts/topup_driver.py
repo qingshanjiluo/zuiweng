@@ -6,6 +6,7 @@ daily 幂等: 已签到账号返回 ALREADY 不会重复签到, 因此补跑安�
 env: ZUIWENG_API / ADMIN_TOKEN / PLATFORM(可选, 只补指定平台)
 """
 import os, sys, io, time, datetime, requests
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from platforms import load_config, build_platforms
@@ -14,6 +15,7 @@ API = os.environ.get("ZUIWENG_API", "https://zuiweng-api.sifangzhiji.workers.dev
 ADMIN = os.environ.get("ADMIN_TOKEN", "")
 PLATFORM = os.environ.get("PLATFORM", "")
 BATCH = int(os.environ.get("BATCH", "400"))
+TOPUP_TIMEOUT = int(os.environ.get("TOPUP_PLATFORM_TIMEOUT", "600"))
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/150.0.0.0 Safari/537.36")
 TODAY = datetime.datetime.utcnow().strftime("%Y-%m-%d")
 
@@ -75,7 +77,13 @@ def main():
         print(f"== {name}: 活跃 {len(grp)} signedToday {signed} 缺 {missing}, 补签 ==")
         accounts_out, signs, points, health = [], [], [], []
         try:
-            o, s, pt, h = dailies[name].daily(grp, print)
+            with ThreadPoolExecutor(max_workers=1) as ex:
+                fut = ex.submit(dailies[name].daily, grp, print)
+                try:
+                    o, s, pt, h = fut.result(timeout=TOPUP_TIMEOUT)
+                except FutureTimeout:
+                    o, s, pt, h = [], [], [], []
+                    print(f"== {name}: 补签超时({TOPUP_TIMEOUT}s), 放弃本次补签 ==")
         except Exception as e:
             o, s, pt, h = [], [], [], []
             print(f"== {name}: 补签整体异常: {str(e)[:120]}")
