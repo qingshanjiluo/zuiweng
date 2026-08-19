@@ -19,6 +19,7 @@
             (mail.tm 可收码, 奖励发放机制待确认)
 """
 import os, re, time, base64, random, string
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from .base import PlatformBase, all_accounts_fields, is_dup_error
 
 try:
@@ -163,7 +164,9 @@ class Platform(PlatformBase):
         accounts_out, signs, points, health = [], [], [], []
         ok = 0
         today = time.strftime("%Y-%m-%d")
-        for a in accounts:
+        workers = int(os.environ.get("MISSAI_WORKERS", "20"))
+
+        def process(a):
             uname, pwd = a.get("email"), a.get("password")
             err = None
             pts = sstat = reward = None
@@ -176,7 +179,7 @@ class Platform(PlatformBase):
                         s.get(ORIG + "/", timeout=30)
                     except Exception:
                         pass
-                    time.sleep(random.uniform(0.5, 1.5))
+                    time.sleep(random.uniform(0.3, 1.0))
                     j = s.post(ORIG + "/api/gva/base/login",
                                json={"username": uname, "password": pwd}, timeout=30).json()
                     code = j.get("code")
@@ -188,23 +191,38 @@ class Platform(PlatformBase):
             except Exception as e:
                 err = f"exc:{str(e)[:60]}"
                 sstat = "ERR"
+            out = {k: a.get(k) or "" for k in all_accounts_fields()}
+            out.update({"id": a["id"], "email": uname, "nickname": a.get("nickname") or uname,
+                        "password": pwd, "petals": pts if pts is not None else a.get("petals", 0),
+                        "status": a.get("status", "pool")})
+            sign_rec = None
+            if sstat in ("SIGNED", "ALREADY"):
+                sign_rec = {"account_id": a["id"], "date": today, "status": sstat, "reward": reward or 0}
+            point_rec = None
+            if pts is not None:
+                point_rec = {"account_id": a["id"], "date": today, "petals": int(pts)}
+            health_rec = {"account_id": a["id"], "ok": 0 if err else 1,
+                          "error": err or "", "petals": pts if pts is not None else a.get("petals", 0)}
+            return a, uname, err, sstat, reward, pts, out, sign_rec, point_rec, health_rec
+
+        results = []
+        with ThreadPoolExecutor(max_workers=workers) as ex:
+            futures = [ex.submit(process, a) for a in accounts]
+            for f in as_completed(futures):
+                results.append(f.result())
+        results.sort(key=lambda r: r[0]["id"])
+        for (a, uname, err, sstat, reward, pts, out, sign_rec, point_rec, health_rec) in results:
             if err:
                 log(f"[{a['id']}] {uname} FAIL {err}")
             else:
                 ok += 1
                 log(f"[{a['id']}] {uname} sign={sstat} reward={reward} pts={pts}")
-            out = {k: a.get(k) or "" for k in all_accounts_fields()}
-            out.update({"id": a["id"], "email": uname, "nickname": a.get("nickname") or uname,
-                        "password": pwd, "petals": pts if pts is not None else a.get("petals", 0),
-                        "status": a.get("status", "pool")})
             accounts_out.append(out)
-            if sstat in ("SIGNED", "ALREADY"):
-                signs.append({"account_id": a["id"], "date": today, "status": sstat, "reward": reward or 0})
-            if pts is not None:
-                points.append({"account_id": a["id"], "date": today, "petals": int(pts)})
-            health.append({"account_id": a["id"], "ok": 0 if err else 1,
-                           "error": err or "", "petals": pts if pts is not None else a.get("petals", 0)})
-            time.sleep(random.uniform(1, 2.5))
+            if sign_rec:
+                signs.append(sign_rec)
+            if point_rec:
+                points.append(point_rec)
+            health.append(health_rec)
         return accounts_out, signs, points, health
 
     # ---------- 底层接口 ----------
