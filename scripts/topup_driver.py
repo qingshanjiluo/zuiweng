@@ -6,7 +6,7 @@ daily 幂等: 已签到账号返回 ALREADY 不会重复签到, 因此补跑安�
 env: ZUIWENG_API / ADMIN_TOKEN / PLATFORM(可选, 只补指定平台)
 """
 import os, sys, io, time, datetime, requests
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
+import multiprocessing as mp
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from platforms import load_config, build_platforms
@@ -15,7 +15,34 @@ API = os.environ.get("ZUIWENG_API", "https://zuiweng-api.sifangzhiji.workers.dev
 ADMIN = os.environ.get("ADMIN_TOKEN", "")
 PLATFORM = os.environ.get("PLATFORM", "")
 BATCH = int(os.environ.get("BATCH", "400"))
-TOPUP_TIMEOUT = int(os.environ.get("TOPUP_PLATFORM_TIMEOUT", "600"))
+TOPUP_TIMEOUT = int(os.environ.get("TOPUP_PLATFORM_TIMEOUT", "900"))
+
+
+def _daily_worker(q, fn, grp):
+    try:
+        o, s, pt, h = fn(grp, print)
+        q.put(("ok", o, s, pt, h))
+    except Exception as e:
+        q.put(("err", str(e)[:200]))
+
+
+def run_with_timeout(fn, grp, budget):
+    ctx = mp.get_context("spawn")
+    q = ctx.Queue()
+    p = ctx.Process(target=_daily_worker, args=(q, fn, grp))
+    p.start()
+    p.join(budget)
+    if p.is_alive():
+        p.terminate()
+        p.join()
+        return None
+    if q.empty():
+        return [], [], [], []
+    kind = q.get()
+    if kind[0] == "err":
+        print(f"  worker异常: {kind[1]}")
+        return [], [], [], []
+    return kind[1], kind[2], kind[3], kind[4]
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/150.0.0.0 Safari/537.36")
 TODAY = datetime.datetime.utcnow().strftime("%Y-%m-%d")
 
@@ -76,29 +103,23 @@ def main():
             continue
         print(f"== {name}: 活跃 {len(grp)} signedToday {signed} 缺 {missing}, 补签 ==")
         accounts_out, signs, points, health = [], [], [], []
-        try:
-            with ThreadPoolExecutor(max_workers=1) as ex:
-                fut = ex.submit(dailies[name].daily, grp, print)
+        res = run_with_timeout(dailies[name].daily, grp, TOPUP_TIMEOUT)
+        if res is None:
+            print(f"== {name}: 补签超时({TOPUP_TIMEOUT}s), 放弃本次补签 ==")
+        else:
+            o, s, pt, h = res
+            accounts_out += o; signs += s; points += pt; health += h
+            for i in range(0, len(accounts_out), BATCH):
+                body = {"accounts": accounts_out[i:i + BATCH],
+                        "sign_records": signs[i:i + BATCH] if i < len(signs) else [],
+                        "points": points[i:i + BATCH] if i < len(points) else [],
+                        "health": health[i:i + BATCH] if i < len(health) else []}
                 try:
-                    o, s, pt, h = fut.result(timeout=TOPUP_TIMEOUT)
-                except FutureTimeout:
-                    o, s, pt, h = [], [], [], []
-                    print(f"== {name}: 补签超时({TOPUP_TIMEOUT}s), 放弃本次补签 ==")
-        except Exception as e:
-            o, s, pt, h = [], [], [], []
-            print(f"== {name}: 补签整体异常: {str(e)[:120]}")
-        accounts_out += o; signs += s; points += pt; health += h
-        for i in range(0, len(accounts_out), BATCH):
-            body = {"accounts": accounts_out[i:i + BATCH],
-                    "sign_records": signs[i:i + BATCH] if i < len(signs) else [],
-                    "points": points[i:i + BATCH] if i < len(points) else [],
-                    "health": health[i:i + BATCH] if i < len(health) else []}
-            try:
-                rr = http("POST", f"{API}/api/chunshui/sync", body, token=ADMIN)
-                print(f"同步({len(body['accounts'])}账号/{len(body['sign_records'])}签到): {rr.status_code} {rr.text[:100]}")
-            except Exception as e:
-                print(f"同步异常: {str(e)[:120]}")
-        print(f"== {name}: 补签完成, 新增签到 {len(signs)} ==")
+                    rr = http("POST", f"{API}/api/chunshui/sync", body, token=ADMIN)
+                    print(f"同步({len(body['accounts'])}账号/{len(body['sign_records'])}签到): {rr.status_code} {rr.text[:100]}")
+                except Exception as e:
+                    print(f"同步异常: {str(e)[:120]}")
+            print(f"== {name}: 补签完成, 新增签到 {len(signs)} ==")
     print("补签检查完成")
     sys.exit(0)
 

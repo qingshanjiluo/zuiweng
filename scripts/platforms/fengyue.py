@@ -111,7 +111,7 @@ class Platform(PlatformBase):
     # ---------- 每日任务 (登录->积分->日历->签到->抽奖) ----------
     def daily(self, accounts, log):
         import concurrent.futures
-        n = int(os.environ.get("FY_CONCURRENCY", "3"))
+        n = int(os.environ.get("FY_CONCURRENCY", "20"))
         accounts_out, signs, points, health = [], [], [], []
         ok = 0
         today = datetime.now(TZ).strftime("%Y-%m-%d")
