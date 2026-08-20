@@ -18,18 +18,21 @@ BATCH = int(os.environ.get("BATCH", "400"))
 TOPUP_TIMEOUT = int(os.environ.get("TOPUP_PLATFORM_TIMEOUT", "900"))
 
 
-def _daily_worker(q, fn, grp):
+def _daily_worker(q, plat_name, grp):
     try:
-        o, s, pt, h = fn(grp, print)
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from platforms import load_config, build_platforms
+        p = build_platforms(load_config())[plat_name]
+        o, s, pt, h = p.daily(grp, print)
         q.put(("ok", o, s, pt, h))
     except Exception as e:
         q.put(("err", str(e)[:200]))
 
 
-def run_with_timeout(fn, grp, budget):
+def run_with_timeout(plat_name, grp, budget):
     ctx = mp.get_context("spawn")
     q = ctx.Queue()
-    p = ctx.Process(target=_daily_worker, args=(q, fn, grp))
+    p = ctx.Process(target=_daily_worker, args=(q, plat_name, grp))
     p.start()
     p.join(budget)
     if p.is_alive():
@@ -103,7 +106,7 @@ def main():
             continue
         print(f"== {name}: 活跃 {len(grp)} signedToday {signed} 缺 {missing}, 补签 ==")
         accounts_out, signs, points, health = [], [], [], []
-        res = run_with_timeout(dailies[name].daily, grp, TOPUP_TIMEOUT)
+        res = run_with_timeout(name, grp, TOPUP_TIMEOUT)
         if res is None:
             print(f"== {name}: 补签超时({TOPUP_TIMEOUT}s), 放弃本次补签 ==")
         else:
